@@ -1,0 +1,46 @@
+//Collect features of countries
+var countries = ee.FeatureCollection(table);
+
+// Filter the collection to only include Uganda
+var uganda = countries.filter(ee.Filter.eq('NAME_0', 'Uganda'));
+// Retrieve the CHIRPS rainfall data for the specified location and time range
+var rainfall = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+
+// Filter the collection to a specific time period
+var rainfall_Aug = rainfall.filterDate('2022-08-01', '2022-09-06')
+
+// Define the style for the rainfall data
+var style = {
+  min: 0,
+  max: 500,
+  palette: ['#ffffff', '#00ffff', '#0000ff', '#00ff00', '#ffff00', '#ff0000']
+  };
+  
+//Reducer on total precipitation
+var total = rainfall_Aug.reduce(ee.Reducer.sum())
+
+// Add the mean rainfall data for Uganda to the map
+Map.addLayer(total, style, 'Total Rainfall (mm/day)');
+
+//Add boundaries for Uganda
+var Uganda = ee.FeatureCollection("users/pamelaopio/Ug_Districts");
+var stats = total.reduceRegion({
+  reducer: ee.Reducer.mean(),
+  geometry: Uganda,
+  scale: 5000,
+  })
+print(stats.get('precipitation_sum')) // 1336.52 mm
+
+// Clip the image to the city boundary and display
+var totalUganda = total.clip(Uganda)
+Map.addLayer(totalUganda, style, 'Total Precipitation (Uganda)')
+
+//Export the rainfall map to Google Drive
+Export.image.toDrive({
+ image: totalUganda,
+ description: 'Uganda_Rainfall',
+ folder: 'Google_Earth_Engine',
+ fileNamePrefix: 'uganda_rainfall_2022',
+ scale: 1000,
+ maxPixels: 1E10
+})

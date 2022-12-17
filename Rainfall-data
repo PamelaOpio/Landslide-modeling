@@ -16,31 +16,31 @@ var style = {
   palette: ['#ffffff', '#00ffff', '#0000ff', '#00ff00', '#ffff00', '#ff0000']
   };
   
-//Reducer on total precipitation
-var total = rainfall_Aug.reduce(ee.Reducer.sum())
+//Reducer on mean precipitation
+var mean_rainfall = rainfall_Aug.reduce(ee.Reducer.mean())
 
 // Add the mean rainfall data for Uganda to the map
-Map.addLayer(total, style, 'Total Rainfall (mm/day)');
+Map.addLayer(mean_rainfall, style, 'Total Rainfall (mm/day)');
 
 //Add boundaries for Uganda
 var Uganda = ee.FeatureCollection("users/pamelaopio/Ug_Districts");
-var stats = total.reduceRegion({
+var stats = mean_rainfall.reduceRegion({
   reducer: ee.Reducer.mean(),
   geometry: Uganda,
   scale: 5000,
   })
-print(stats.get('precipitation_sum')) // 1336.52 mm
+print(stats.get('precipitation_mean')) // 1336.52 mm
 
 // Clip the image to the city boundary and display
-var totalUganda = total.clip(Uganda)
-Map.addLayer(totalUganda, style, 'Total Precipitation (Uganda)')
+var meanUganda = mean_rainfall.clip(Uganda)
+Map.addLayer(meanUganda, style, 'Mean Precipitation (Uganda)')
 
 //Export the rainfall map to Google Drive
 Export.image.toDrive({
- image: totalUganda,
- description: 'Uganda_Rainfall',
+ image: meanUganda,
+ description: 'Uganda_Rainfall_mean_aug',
  folder: 'Google_Earth_Engine',
- fileNamePrefix: 'uganda_rainfall_2022',
+ fileNamePrefix: 'uganda_rainfall_2022_mean_aug',
  scale: 1000,
  maxPixels: 1E10
 })

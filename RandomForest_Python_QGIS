@@ -1,0 +1,43 @@
+# Import necessary modules
+from qgis.core import QgsApplication, QgsVectorLayer, QgsField, QgsVectorFileWriter
+from qgis.utils import iface
+
+# Initialize QGIS application
+app = QgsApplication([], False)
+app.initQgis()
+
+# Load the input dataset into a QgsVectorLayer
+input_layer = QgsVectorLayer("path/to/input/dataset.shp", "Input Layer", "ogr")
+
+# Select the predictor variables that you want to use in the model
+predictor_fields = ['field1', 'field2', 'field3']
+
+# Create a list of QgsField objects for the predictor variables
+predictor_qgsfields = [QgsField(field, QVariant.Double) for field in predictor_fields]
+
+# Create a new vector layer to hold the model output
+output_layer = QgsVectorLayer("Point", "Model Output", "memory")
+
+# Add the predictor fields to the output layer
+output_layer.dataProvider().addAttributes(predictor_qgsfields)
+
+# Add a field to the output layer to hold the predicted landslide likelihood
+output_layer.dataProvider().addAttributes([QgsField("landslide_liklihood", QVariant.Double)])
+
+# Update the fields of the output layer
+output_layer.updateFields()
+
+# Use the RandomForest algorithm from the Processing toolbox to model landslides
+processing.run("qgis:randomforest", {'INPUT_LAYER': input_layer,
+                                     'PREDICTOR_FIELDS': predictor_fields,
+                                     'RESPONSE_FIELD': 'landslide_field',
+                                     'OUTPUT_LAYER': output_layer})
+
+# Save the output layer to a shapefile
+QgsVectorFileWriter.writeAsVectorFormat(output_layer, "path/to/output/file.shp", "utf-8", output_layer.crs(), "ESRI Shapefile")
+
+# Add the output layer to the map
+iface.addVectorLayer(output_layer, "Model Output", "ogr")
+
+# Clean up QGIS application
+app.exitQgis()

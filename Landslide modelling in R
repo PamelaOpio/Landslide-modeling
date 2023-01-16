@@ -1,0 +1,46 @@
+#This code assumes that you have a raster file called "landslide_raster.tif" that contains predictor variables 
+#for the model, and that you have already loaded the randomForest, raster, and rgdal libraries into R. 
+#The code converts the raster data to a data frame, adds a column for the landslide variable, and then 
+# trains a random forest model on the training data. It then makes predictions on the test data, calculates 
+# the model's accuracy, and saves the model to a file.
+#To use this model within QGIS, you can use the predict() function to make predictions on new raster data, 
+#and then use the raster() function to convert the predictions back to a raster format. You can also use 
+# the plot() function to visualize the predictions on a map.#
+
+#First merge all the predictor and input layers into one.The Merge tool can only be used to merge raster files 
+# that have the same projection, resolution, and number of bands. If the input raster files do not meet these 
+#requirements, you may need to reproject or resample one or both of the rasters before merging them.
+#To change the pixels of a raster, double click >Export as > Name > Input new resolution (30,30)
+
+# Load required libraries
+library(randomForest)
+library(raster)
+library(rgdal)
+
+# Load the raster data into R
+raster_data <- raster("/Users/pamelaacheng/Library/CloudStorage/OneDrive-Personal/Documents/Oxford/landslide_raster.tif")
+
+# Convert the raster data to a data frame
+df <- data.frame(raster_data)
+
+# Add a column for the landslide variable
+df$landslide <- factor(df$layer)
+
+# Split the data into training and test sets
+set.seed(123)
+splitIndex <- createDataPartition(df$landslide, p = 0.7, list = FALSE, times = 1)
+train <- df[splitIndex, ]
+test <- df[-splitIndex, ]
+
+# Train the random forest model
+model <- randomForest(landslide ~ ., data = train)
+
+# Make predictions on the test set
+predictions <- predict(model, test)
+
+# Calculate the model's accuracy
+accuracy <- mean(predictions == test$landslide)
+print(accuracy)
+
+# Save the model to a file
+saveRDS(model, file = "landslide_model.rds")

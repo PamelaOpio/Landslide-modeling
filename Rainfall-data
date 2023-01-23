@@ -1,3 +1,6 @@
+//This code collects data from Google Earth Engine
+
+
 //Collect features of countries
 var countries = ee.FeatureCollection(table);
 

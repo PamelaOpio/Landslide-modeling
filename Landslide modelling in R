@@ -1,46 +1,102 @@
-#This code assumes that you have a raster file called "landslide_raster.tif" that contains predictor variables 
-#for the model, and that you have already loaded the randomForest, raster, and rgdal libraries into R. 
-#The code converts the raster data to a data frame, adds a column for the landslide variable, and then 
+#This code loads raster data, extracts necessary data from the raster data, creates separate dataframes for the 
+#individual data types then combines the dataframes into a single one.
+#The code then adds the landslide inventory data, then adds a column for the landslide variable, and then 
 # trains a random forest model on the training data. It then makes predictions on the test data, calculates 
 # the model's accuracy, and saves the model to a file.
-#To use this model within QGIS, you can use the predict() function to make predictions on new raster data, 
-#and then use the raster() function to convert the predictions back to a raster format. You can also use 
-# the plot() function to visualize the predictions on a map.#
 
-#First merge all the predictor and input layers into one.The Merge tool can only be used to merge raster files 
-# that have the same projection, resolution, and number of bands. If the input raster files do not meet these 
-#requirements, you may need to reproject or resample one or both of the rasters before merging them.
-#To change the pixels of a raster, double click >Export as > Name > Input new resolution (30,30)
 
-# Load required libraries
+# 1. Load required libraries
+install.packages("randomForest")
 library(randomForest)
 library(raster)
 library(rgdal)
+library(sp)
 
-# Load the raster data into R
-raster_data <- raster("/Users/pamelaacheng/Library/CloudStorage/OneDrive-Personal/Documents/Oxford/landslide_raster.tif")
 
-# Convert the raster data to a data frame
-df <- data.frame(raster_data)
 
-# Add a column for the landslide variable
+# 2. Load the static (conditioning factors) raster data into R
+raster_DEM_Ug <- raster("/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/DEM/DEM_Uganda.tif")
+raster_aspect <- raster("/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/Slope&Aspect/Ug_Aspect.tif")
+raster_plan <- raster("")
+raster_profile <- raster("")
+raster_slope <- raster("/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/Slope&Aspect/Ug_Slope.tif")
+raster_lithology <- raster("")
+raster_soil <- raster("/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/Soil&Lithology/Ug_Soil.tif")
+#fault
+#rivers
+#roads
+
+
+# 3. Load the dynamic (trigger) raster data into R
+raster_LULC_Ug <- raster("/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/Land Use & cover/Ug_LULC_ESACCI_1992_2015.tif")
+raster_rainfall <-raster("")
+
+
+# 4. Extracting data from the raster files
+# 4.1. Extracting data from DEM file (extract the elevation values, slope values, aspect values, x and y coordinates, cell size, and projection)
+elevation_values <- values(raster_DEM_Ug)
+slope_values <- values(raster_slope) #slope_values <- terrain(raster_DEM_Ug, opt = "slope")
+aspect_values <- values(raster_aspect) #aspect_values <- terrain(raster_DEM_Ug, opt = "aspect")
+x_coords <- xFromCol(raster_DEM_Ug)
+y_coords <- yFromRow(raster_DEM_Ug)
+projection <- projection(raster_DEM_Ug)
+
+# 4.2. Extracting data from the LULC raster file with several years covered in different bands
+# Extract the data from all bands and create a raster stack
+bands_LULC_Ug <- stack("/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/Land Use & cover/Ug_LULC_ESACCI_1992_2015.tif")
+# Get the number of bands in the raster
+nbands_LULC_Ug <- nlayers(bands_LULC_Ug)
+# Extract each band
+LULC_1992 <- bands_LULC_Ug[[1]]
+LULC_1993 <- bands_LULC_Ug[[2]]
+LULC_2015 <- bands_LULC_Ug[[24]]
+# Plot the data
+plot(LULC_1992)
+plot(LULC_1993)
+plot(LULC_2015)
+
+# 5. Create dataframes of the respective data
+DEM_map_data <- data.frame(elevation_values =values(raster_DEM_Ug), slope_values=values(raster_slope), aspect_values=values(raster_aspect), x_coords=xFromCol(raster_DEM_Ug), y_coords=yFromRow(raster_DEM_Ug), projection=projection(raster_DEM_Ug))
+Soil_data <- data.frame(soil_values =values(raster_soil), bulk_density =values(raster_soil))
+Lithology_data =
+LULC_data = bands_LULC_Ug
+Rainfall_data =
+                        
+# 5.1 Combine the dataframes into a single one
+#dem_map_data_Ug <- data.frame(elevation_values, slope_values, aspect_values, x_coords, y_coords, projection)
+#data[rr,'elevation_mean']<- raster::extract(input_e, SpatialPoints(cbind(data[rr,'centerLon'] ,data[rr,'centerLat'])))
+#data[rr,'raster_DEM_ug']<- raster::extract(getValues(raster_DEM_Ug), SpatialPoints(cbind(data[rr,'centerLon'] ,data[rr,'centerLat'])))
+#data[rr,'raster_aspect']<- raster::extract(getValues(raster_aspect), coordinates(raster_aspect))
+
+
+
+# 6. Load the landslide inventory data
+data(landslides)
+
+# 6.1 Add a column for the landslide variable
 df$landslide <- factor(df$layer)
 
-# Split the data into training and test sets
+# 7. Model using the random forest
+# 7.1 Split the data into training and test sets
 set.seed(123)
 splitIndex <- createDataPartition(df$landslide, p = 0.7, list = FALSE, times = 1)
 train <- df[splitIndex, ]
 test <- df[-splitIndex, ]
 
-# Train the random forest model
+# 7.2 Train the random forest model
 model <- randomForest(landslide ~ ., data = train)
 
-# Make predictions on the test set
+# 7.3 Make predictions on the test set
 predictions <- predict(model, test)
 
-# Calculate the model's accuracy
+# 7.4 Calculate the model's accuracy
 accuracy <- mean(predictions == test$landslide)
 print(accuracy)
 
-# Save the model to a file
+# 7.5 Save the model to a file
 saveRDS(model, file = "landslide_model.rds")
+
+# 8. Use model to predict future events
+# 8.1 Load future climate and LULC data
+
+# 8.2 Use future climate and LULC data to predict Landslide events

@@ -8,8 +8,6 @@ library(stars)
 # 2. DESCRIPTIVE STATISTICS
 
 # 2.1 Minimum, mean and maximum values
-# Read in the raster file
-raster_file <- raster("path/to/raster_file.tif")
 # Get the minimum value
 setMinMax(raster_DEM_Ug) #obtains the min and max for the elevations
 setMinMax(raster_slope) #obtains the min and max of slope

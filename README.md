@@ -8,7 +8,8 @@ Collect data for the landslide modeling.
 6. Fault line data collected from GEM (https://github.com/GEMScienceTools/gem-global-active-faults)
 7. Road network data collected from MUK GIS lab (Updated road network with UNRA)
 8. River data obtained from USGS HydroSHEDS (https://www.hydrosheds.org/products/hydrorivers)
-Availabel data in folder entitled, "Data"
+
+Available data in folder entitled, "Data"
 
 # Step 02 - Data extraction
 2.1 Data cleaning and preparation conducted in QGIS

@@ -1,163 +1,183 @@
-# Validate historical CMIP6 models
-#1. Collect CMIP6 model files (.nc)
-#2. Collect GSOD data
+"""Validate historical CMIP6 models
 
+1. Collect CMIP6 model files (.nc)
+2. Collect GSOD data
 
-#Install necessary packages in terminal 
-#conda install requests
-import pandas as pd
-#conda install -c conda-forge sklearn-pandas
-#conda install -c conda-forge matplotlib
-#conda install sklearn.neighbors
-#conda install scikit-learn
-#conda install -c conda-forge scipy #for nearest neighbor algorithms    
+Install necessary packages in terminal:
+
+    conda install -f requirements.txt
+
+"""
+import datetime  # used to convert time from gregorian to POSIXct format
+import os
+import concurrent.futures
+from functools import partial
+
+import netCDF4  # to read .nc files
 import numpy as np
 import pandas as pd
-import geopandas as gpd
-import matplotlib.pyplot as plt #to plot the maps
-import cartopy.crs as crs
-import netCDF4 #to convert .nc files to .csv files
-import csv
-import ee
-import requests
-import io
+from scipy.stats import pearsonr
 
-#Upload the historical CMIP6 model netCDF files
-#Read netCDF precipitation files (r1i1p1f1 Variant level used for 4 models (CanESM5, IPSL-CM 6A-LR, MIROC6 and MRI-ESM2-0)
-#miroc6 = "/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/HDM4/CMIP6 data/Historical /pr_Amon_MIROC6_historical_r10i1p1f1_gn_195001-201412.nc"
-awi = "/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/HDM4/CMIP6 data/Historical /pr_Amon_AWI-CM-1-1-MR_historical_r1i1p1f1_gn_200801-200812.nc"
-#cesm2 = "/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/HDM4/CMIP6 data/Historical /pr_day_CESM2-WACCM_historical_r1i1p1f1_gn_20100101-20150101.nc"
-#fgoals = ""
 
-#Read the variable names
-#Open the dataset
-nc_p = netCDF4.Dataset(awi, "r")
+def main():
+    cmip6_data_folder = "/ouce-home/data/model/cmip6/CMIP6/"
 
-# Get the list of variable names
-variable_names = nc_p.variables.keys()
+    # Upload the historical CMIP6 model netCDF files
+    # Read netCDF precipitation files (r1i1p1f1 Variant level used for 4 models
+    # (CanESM5, IPSL-CM 6A-LR, MIROC6 and MRI-ESM2-0)
+    historical_filepaths = {
+        "miroc6": (
+            "CMIP/MIROC/MIROC6/historical/r1i1p1f1/Amon/pr/gn/latest/"
+            "pr_Amon_MIROC6_historical_r1i1p1f1_gn_185001-201412.nc"
+        ),
+        "awi": (
+            "CMIP/AWI/AWI-CM-1-1-MR/historical/r1i1p1f1/Amon/pr/gn/latest/"
+            "pr_Amon_AWI-CM-1-1-MR_historical_r1i1p1f1_gn_185001-201412.nc"
+        ),
+        "cesm2": (
+            "CMIP/NCAR/CESM2-WACCM/historical/r1i1p1f1/Amon/pr/gn/latest/"
+            "pr_Amon_CESM2-WACCM_historical_r1i1p1f1_gn_185001-201412.nc"
+        ),
+        "fgoals": (
+            "CMIP/CAS/FGOALS-g3/historical/r1i1p1f1/Amon/pr/gn/latest/"
+            "pr_Amon_FGOALS-g3_historical_r1i1p1f1_gn_185001-201612.nc"
+        ),
+    }
 
-# Print the variable names
-print(variable_names)
-#dict_keys(['time', 'time_bnds', 'lat', 'lat_bnds', 'lon', 'lon_bnds', 'pr'])
+    # Load future CMIP6 model data
+    future_filepaths = {}
+    for ssp in ("ssp126", "ssp245", "ssp585"):
+        future_filepaths[ssp, "miroc6"] = (
+            f"ScenarioMIP/MIROC/MIROC6/{ssp}/r1i1p1f1/Amon/pr/gn/latest/"
+            f"pr_Amon_MIROC6_{ssp}_r1i1p1f1_gn_201501-210012.nc"
+        )
+        future_filepaths[ssp, "awi"] = (
+            f"ScenarioMIP/AWI/AWI-CM-1-1-MR/{ssp}/r1i1p1f1/Amon/pr/gn/latest/"
+            f"pr_Amon_AWI-CM-1-1-MR_{ssp}_r1i1p1f1_gn_201501-210012.nc"
+        )
+        future_filepaths[ssp, "cesm2"] = (
+            f"ScenarioMIP/NCAR/CESM2-WACCM/{ssp}/r1i1p1f1/Amon/pr/gn/latest/"
+            f"pr_Amon_CESM2-WACCM_{ssp}_r1i1p1f1_gn_201501-229912.nc"
+        )
+        future_filepaths[ssp, "fgoals"] = (
+            f"ScenarioMIP/CAS/FGOALS-g3/{ssp}/r1i1p1f1/Amon/pr/gn/latest/"
+            f"pr_Amon_FGOALS-g3_{ssp}_r1i1p1f1_gn_201501-210012.nc"
+        )
 
-#CHECK THE FORMAT OF THE TIME VARIABLE (nc files usually have time in UTC, Gregorian, etc format which needs to be changed to POSIXct object)
-# Access the time variable
-time_variable = nc_p.variables['time']
+    # For testing purposes use GSOD data for Uganda already collected
+    # consider using CRU data
+    observed_data = pd.read_csv(
+        "/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/Precipitation/gsod_uganda.csv"
+    )
 
-print("Time variable attributes:")
-print("Units:", time_variable.units)
-print("Calendar:", time_variable.calendar)
-#Time variable attributes:
-#Units: days since 0001-01-01 00:00:00
-#Calendar: noleap
+    process = partial(
+        process_model_data,
+        cmip6_data_folder=cmip6_data_folder,
+        observed_data=observed_data,
+    )
 
-#Convert the PRCP nc file to csv
-# Open the NetCDF file
-csv_p = "netcdf_p.csv" #define the output file
+    # Bias correction for each CMIP6 model
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        model, correlation_coefficient = executor.map(
+            process, historical_filepaths.items()
+        )
+        print(f"Processed {model=}")
+        print(f"Correlation coefficient = {correlation_coefficient[0]}")
 
-#CONVERT TIME FROM PROLEPTIC GREGORIAN TO POSIXct FORMAT
-# Access the time variable
-time_variable = nc_p.variables['time']
-#time_datetime = nc_p.variables['time']
-# Get the time values
-time_values = time_variable[:]
-# Convert time values to datetime objects
-import datetime #used to convert time from gregorian to POSIXct format
-base_date = datetime.datetime(1, 1, 1)
-time_datetime = [base_date + datetime.timedelta(days=int(t)) for t in time_values]
-# Extract year, month, and day from the converted time
-years = [t.year for t in time_datetime]
-months = [t.month for t in time_datetime]
-days = [t.day for t in time_datetime]
 
-# Get latitude and longitude values
-lat_values = nc_p.variables['lat'][:]
-lon_values = nc_p.variables['lon'][:]
+def process_model_data(model, filepath, cmip6_data_folder=None, observed_data=None):
+    model_data = read_dataset(os.path.join(cmip6_data_folder, filepath))
+    corrected_model_data = bias_correct(observed_data, model_data)
+    # Calculate the correlation between observed and model data
+    correlation_coefficient = pearsonr(observed_data, corrected_model_data)
+    return model, correlation_coefficient
 
-# Get precipitation variable
-precipitation_variable = nc_p.variables['pr']
 
-# Prepare CSV file
-with open(csv_p, "w", newline="") as csvfile:
-    csv_writer = csv.writer(csvfile)
+def bias_correct(observed_data, model_data):
+    # Calculate the bias correction factor
+    bias_correction_factor = np.nanmean(observed_data) / np.nanmean(model_data)
+    # Apply bias correction to the model data
+    return model_data * bias_correction_factor
 
-    # Write header
-    header = ["Lat", "Lon", "Time", "Year", "Month", "Day", "Precipitation", "Pr_mmd"]
-    csv_writer.writerow(header)
+
+def read_dataset(filename):
+    # Open the dataset
+    nc_p = netCDF4.Dataset(filename, "r")
+
+    # Get the list of variable names
+    variable_names = nc_p.variables.keys()
+
+    # Print the variable names
+    print(variable_names)
+
+    # CHECK THE FORMAT OF THE TIME VARIABLE (nc files usually have time in UTC,
+    # Gregorian, etc format which needs to be changed to POSIXct object)
+
+    # Access the time variable
+    time_variable = nc_p.variables["time"]
+
+    print("Time variable attributes:")
+    print("Units:", time_variable.units)
+    print("Calendar:", time_variable.calendar)
+    # Time variable attributes:
+    # Units: days since 0001-01-01 00:00:00
+    # Calendar: noleap
+
+    # CONVERT TIME FROM PROLEPTIC GREGORIAN TO POSIXct FORMAT
+    # Access the time variable
+    time_variable = nc_p.variables["time"]
+    # time_datetime = nc_p.variables['time']
+    # Get the time values
+    time_values = time_variable[:]
+    # Convert time values to datetime objects
+
+    base_date = datetime.datetime(1, 1, 1)
+    time_datetime = [base_date + datetime.timedelta(days=int(t)) for t in time_values]
+
+    # Get latitude and longitude values
+    lat_values = nc_p.variables["lat"][:]
+    lon_values = nc_p.variables["lon"][:]
+
+    # Get precipitation variable
+    precipitation_variable = nc_p.variables["pr"]
+    precipitation_data = []
 
     # Write data rows
     for i, t in enumerate(time_datetime):
         year, month, day = t.year, t.month, t.day
-        
+
         for lat in lat_values:
             for lon in lon_values:
                 lat_index = (lat_values == lat).nonzero()[0][0]
                 lon_index = (lon_values == lon).nonzero()[0][0]
-                
+
                 precipitation_value = precipitation_variable[i, lat_index, lon_index]
-                Pr_mmd = precipitation_value * 86400 #convert precipitation from kg m-2 s-1 to mm/day
-                
-                row_data = [lat, lon, t, year, month, day, precipitation_value, Pr_mmd]
-                csv_writer.writerow(row_data)
+                Pr_mmd = (
+                    precipitation_value * 86400
+                )  # convert precipitation from kg m-2 s-1 to mm/day
 
-# Close the NetCDF file
-nc_p.close()
+                row_data = {
+                    "lat": lat,
+                    "lon": lon,
+                    "t": t,
+                    "year": year,
+                    "month": month,
+                    "day": day,
+                    "precipitation_value": precipitation_value,
+                    "Pr_mmd": Pr_mmd,
+                }
+                precipitation_data.append(row_data)
 
-#Prcp is in kg m-2 s-1
+    # Close the NetCDF file
+    nc_p.close()
 
-#Print the precipitation dataframe
-awi1 = pd.read_csv('netcdf_p.csv')
-print(awi1.head(-6))
+    # Prcp is in kg m-2 s-1
 
-#Check the years of the future precipitation data (data validation check)
-prec_years = awi['Year'].unique()
-print(prec_years)
+    # Print the precipitation dataframe
+    awi1 = pd.DataFrame(precipitation_data)
+    print(awi1.head(-6))
 
-#For testing purposes use GSOD data for Uganda already collected
-gsod_Ug = pd.read_csv("/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/Precipitation/gsod_uganda.csv")
-
-#Bias correction for each CMIP6 model
-import numpy as np
-
-# Load observed and model data (repeat this process for each of the models)
-observed_data = gsod_Ug #consider using CRU data
-model_data1 = awi1
-#model_data2 = miroc6
-#model_data3 = cesm2
-#model_data4 = fgoals
-
-# Calculate the bias correction factor
-bias_correction_factor1 = np.nanmean(observed_data) / np.nanmean(model_data1)
-#bias_correction_factor2 = np.nanmean(observed_data) / np.nanmean(model_data2)
-#bias_correction_factor3 = np.nanmean(observed_data) / np.nanmean(model_data3)
-#bias_correction_factor4 = np.nanmean(observed_data) / np.nanmean(model_data4)
-
-# Apply bias correction to the model data
-corrected_model_data1 = model_data1 * bias_correction_factor1
-#corrected_model_data2 = model_data1 * bias_correction_factor2
-#corrected_model_data3 = model_data1 * bias_correction_factor3
-#corrected_model_data4 = model_data1 * bias_correction_factor4
-
-#Validation
-from scipy.stats import pearsonr
-
-
-# Calculate the correlation between observed and model data (repeat process for each of the models)
-correlation_coefficient1 = pearsonr(observed_data, corrected_model_data1)
-#correlation_coefficient2 = pearsonr(observed_data, corrected_model_data2)
-#correlation_coefficient3 = pearsonr(observed_data, corrected_model_data3)
-#correlation_coefficient4 = pearsonr(observed_data, corrected_model_data4)
-
-# Print the correlation coefficient
-print(f"Correlation Coefficient: {correlation_coefficient1[0]}")
-
-
-#Modelling future rainfall
-# Load future CMIP6 model data 
-future_model_data_miroc6 = "/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/HDM4/CMIP6 data/MIROC6/SSP126/pr_day_MIROC6_ssp126_r1i1p1f1_gn_20250101-20341231.nc" 
-#future_model_data_fgoals = # Load future data for FGOALS model
-#future_model_data_cesm2 = # Load future data for CESM2 model
-#future_model_data_awi = # Load future data for AWI model
-
-# Create an ensemble by averaging the projections
-ensemble_future_data = (future_model_data_miroc6 + future_model_data_fgoals + future_model_data_cesm2 + future_model_data_awi) / 4.0
+    # Check the years of the future precipitation data (data validation check)
+    prec_years = awi1["year"].unique()
+    print(prec_years)
+    return precipitation_data

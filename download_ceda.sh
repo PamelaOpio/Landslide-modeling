@@ -3,7 +3,7 @@
 # from the CEDA data catalogue at https://data.ceda.ac.uk/badc/cmip6/data/CMIP6/ScenarioMIP
 #
 
-for model in "CAS/FGOALS-g3" "MIROC/MIROC6"; do
+for model in "CAS/FGOALS-g3" "MIROC/MIROC6" "NCAR/CESM2" "AWI/AWI"; do
     for ssp in "ssp126" "ssp245" "ssp460" "ssp585"; do
         for variable in "tas" "pr"; do
             echo "SSP: $ssp  VAR: $variable"

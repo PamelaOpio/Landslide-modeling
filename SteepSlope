@@ -1,0 +1,70 @@
+import geopandas as gpd
+import rasterio
+from rasterio.mask import mask
+import numpy as np
+from shapely.geometry import Point
+import pandas as pd
+
+# Load DEM file and landslides CSV as GeoDataFrame
+dem_Ug = 'path/to/DEM.tif'
+landslides = 'path/to/inventory.csv'
+dem = rasterio.open(dem_Ug)
+landslides_df = pd.read_csv(landslides)
+
+# Buffer radius in meters
+buffer_radius = 500
+
+# Function to calculate slope from a DEM array
+def calculate_slope(dem_array, transform):
+    slope_x, slope_y = np.gradient(dem_array, transform[0], transform[4])
+    slope = np.arctan(np.sqrt(slope_x ** 2 + slope_y ** 2)) * (180.0 / np.pi)
+    return slope
+
+# Prepare empty results list
+results = []
+
+# Iterate over each landslide point
+for index, landslide in landslides_df.iterrows():
+    lon, lat = landslide['long'], landslide['lat']
+    if np.isnan(lon) or np.isnan(lat):
+        continue
+
+    # Create Point geometry
+    point = Point(lon, lat)
+    
+    # Buffer the point
+    buffer_geometry = point.buffer(buffer_radius)
+    
+    # Mask DEM within buffer
+    try:
+        masked, _ = mask(dem, shapes=[buffer_geometry], crop=True)
+    except ValueError:
+        print(f"Error masking DEM for index {index}")
+        continue
+
+    # Calculate slope within buffer
+    slope_array = calculate_slope(masked[0], dem.transform)
+    
+    # Find steepest slope
+    max_slope_index = np.unravel_index(np.argmax(slope_array), slope_array.shape)
+    max_slope_latlon = rasterio.transform.xy(dem.transform, max_slope_index[0], max_slope_index[1])
+    max_slope = slope_array[max_slope_index]
+    
+    # Store results
+    result = {
+        'lat': max_slope_latlon[1],
+        'lon': max_slope_latlon[0],
+        'slope': max_slope,
+        'description': landslide['Description'],
+        'Name': landslide['Name']
+    }
+    results.append(result)
+
+# Create a new GeoDataFrame with the results
+steepest_slopes_gdf = gpd.GeoDataFrame(results, geometry=gpd.points_from_xy([result['lon'] for result in results],
+                                                                          [result['lat'] for result in results]))
+
+# Print or save the GeoDataFrame
+print(steepest_slopes_gdf)
+
+

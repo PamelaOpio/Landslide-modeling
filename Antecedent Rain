@@ -1,0 +1,38 @@
+from datetime import datetime, timedelta
+
+def get_antecedent_rainfall(lat, lon, date, max_days=90):
+    """
+    Collects antecedent rainfall data from GSMaP for specified location and date.
+    
+    :param lat: Latitude of the location.
+    :param lon: Longitude of the location.
+    :param date: Date of the event (format: 'YYYY-MM-DD').
+    :param max_days: Maximum days for antecedent rainfall calculation.
+    :return: Dictionary with antecedent rainfall data.
+    """
+    end_date = datetime.strptime(date, '%Y-%m-%d')
+    point = ee.Geometry.Point([lon, lat])
+
+    antecedent_rainfall = {}
+    for days in range(2, max_days + 1):
+        start_date = end_date - timedelta(days=days)
+        rainfall_image = gsmap \
+                        .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
+                        .sum()
+        
+        rainfall_value = rainfall_image.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=point,
+            scale=10000  # Adjust scale based on your needs
+        ).get('hourlyPrecipRateGC').getInfo()
+
+        antecedent_rainfall[f'rain_{days}_days'] = rainfall_value
+
+    return antecedent_rainfall
+
+
+# Iterate over the DataFrame and get antecedent rainfall
+for index, row in steepSlope.iterrows():
+    rainfall_data = get_antecedent_rainfall(row['lat'], row['long'], row['ev_date'])
+    for key, value in rainfall_data.items():
+        steepSlope.loc[index, key] = value

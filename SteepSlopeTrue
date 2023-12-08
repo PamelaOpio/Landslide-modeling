@@ -1,0 +1,54 @@
+import pandas as pd
+import geopandas as gpd
+import shapely
+#import osgeo
+#import gdal
+import rasterio
+import json
+import numpy as np
+from shapely.geometry import Point
+from rasterio.windows import Window
+
+# Read the landslide data from the CSV file into a pandas DataFrame
+landslides_df = pd.read_csv('/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/Inventory/UNDRR GP.csv')
+
+# Open the DEM file using rasterio
+dem_file = '/Users/pamelaacheng/Library/CloudStorage/OneDrive-Nexus365/DPhil/2022/Landslides/Data/DEM/DEM_Uganda.tif' 
+with rasterio.open(dem_file) as dem:
+    # Read the DEM data
+    dem_data = dem.read(1)
+
+    # Calculate the slope using Horn's algorithm
+    slope = np.zeros_like(dem_data, dtype=np.float32)
+    x, y = np.gradient(dem_data, dem.res[0], dem.res[1])
+    slope = np.arctan(np.sqrt(x**2 + y**2)) * (180.0 / np.pi)
+
+# Define a function to get the steepest slope at a specific location
+def get_steepest_slope(latitude, longitude):
+    # Convert the latitude and longitude to row and column indices
+    col, row = dem.index(longitude, latitude)
+
+    # Define the window around the landslide location
+    window = Window(col-1, row-1, 3, 3)  # Adjust the window size as needed
+
+    # Extract the slope values within the window
+    window_slope = slope[window]
+
+    # Find the steepest slope within the window
+    steepest_slope = np.max(window_slope)
+
+    return steepest_slope
+
+# Iterate over the landslide data and calculate the steepest slope for each location
+steepest_slopes = []
+for _, row in landslides_df.iterrows():
+    lat = row['lat']
+    lon = row['long']
+    steepest_slope = get_steepest_slope(lat, lon)
+    steepest_slopes.append(steepest_slope)
+
+# Add the steepest slope values to the landslide DataFrame
+landslides_df['steepest_slope'] = steepest_slopes
+
+# Print or further process the DataFrame with the steepest slope information
+print(landslides_df)
